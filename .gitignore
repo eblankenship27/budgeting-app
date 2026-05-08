@@ -1,0 +1,35 @@
+cat > .gitignore << 'EOF'
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Build outputs
+dist/
+build/
+.next/
+.expo/
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# AWS CDK
+cdk.out/
+.cdk.staging/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
+EOF
