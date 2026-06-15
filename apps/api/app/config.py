@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -9,5 +10,6 @@ class Settings(BaseSettings):
 
     database_url: str
     environment: str = "local"
+
 
 settings = Settings()

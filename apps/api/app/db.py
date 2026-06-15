@@ -5,9 +5,12 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
 
+
 class Base(DeclarativeBase):
     """Base class for all ORM models"""
+
     pass
+
 
 engine = create_engine(
     settings.database_url,
@@ -16,6 +19,7 @@ engine = create_engine(
 )
 
 SessionLocal = sessionmaker(autoflush=False, bind=engine)
+
 
 def get_db() -> Generator[Session, None, None]:
     """FastAPI dependancy for getting DB session"""

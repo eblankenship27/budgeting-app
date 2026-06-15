@@ -37,7 +37,7 @@
 - type (enum)
 - parentId (self foreign key)
 - color
-- description
+- description (removed)
 - createdAt
 - archived
 

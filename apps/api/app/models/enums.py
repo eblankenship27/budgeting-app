@@ -1,18 +1,21 @@
 import enum
 
-class AccountType(str, enum.Enum):
+
+class AccountType(enum.StrEnum):
     checking = "checking"
     savings = "savings"
     credit = "credit"
     cash = "cash"
     investment = "investment"
-    
-class CategoryType(str, enum.Enum):
+
+
+class CategoryType(enum.StrEnum):
     expense = "expense"
     income = "income"
     transfer = "transfer"
-    
-class BudgetPeriod(str, enum.Enum):
+
+
+class BudgetPeriod(enum.StrEnum):
     weekly = "weekly"
     biweekly = "biweekly"
     monthly = "monthly"

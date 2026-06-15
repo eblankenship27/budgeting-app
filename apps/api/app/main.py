@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 
-
 app = FastAPI(
     title="Budgeting API",
     version="0.1.0",
@@ -15,6 +14,7 @@ app = FastAPI(
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
 
 @app.get("/health/db")
 def db_health_check(db: Session = Depends(get_db)) -> dict[str, str]:

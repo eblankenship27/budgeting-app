@@ -1,21 +1,21 @@
-"""Initial schema
+"""initial schema
 
-Revision ID: c9e436481390
+Revision ID: 8b3b6ef5aa6c
 Revises: 
-Create Date: 2026-06-04 11:02:06.928445
+Create Date: 2026-06-15 11:03:58.780965
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'c9e436481390'
-down_revision: Union[str, Sequence[str], None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = '8b3b6ef5aa6c'
+down_revision: str | Sequence[str] | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -24,10 +24,11 @@ def upgrade() -> None:
     op.create_table('users',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('username', sa.String(length=255), nullable=False),
-    sa.Column('user_email', sa.String(), nullable=False),
+    sa.Column('user_email', sa.String(length=255), nullable=False),
     sa.Column('cognito_sub', sa.String(length=255), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('user_email')
     )
     op.create_index(op.f('ix_users_cognito_sub'), 'users', ['cognito_sub'], unique=True)
     op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=True)
@@ -72,7 +73,7 @@ def upgrade() -> None:
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('user_id', sa.UUID(), nullable=False),
     sa.Column('account_id', sa.UUID(), nullable=False),
-    sa.Column('category_id', sa.UUID(), nullable=False),
+    sa.Column('category_id', sa.UUID(), nullable=True),
     sa.Column('transaction_date', sa.Date(), nullable=False),
     sa.Column('amount', sa.Numeric(precision=12, scale=2), nullable=False),
     sa.Column('description', sa.String(length=500), nullable=False),
@@ -82,7 +83,7 @@ def upgrade() -> None:
     sa.Column('is_pending', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['account_id'], ['accounts.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['category_id'], ['categories.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['category_id'], ['categories.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
