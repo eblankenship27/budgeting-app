@@ -1,7 +1,9 @@
+import uuid
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy import ForeignKey, create_engine
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from app.config import settings
 
@@ -10,6 +12,15 @@ class Base(DeclarativeBase):
     """Base class for all ORM models"""
 
     pass
+
+
+class UserOwned:
+    """A mixin class for user owned"""
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
 
 
 engine = create_engine(

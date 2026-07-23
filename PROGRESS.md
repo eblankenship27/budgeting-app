@@ -20,9 +20,9 @@ Legend: ✅ done · ⏳ in progress · ⬜ not started · ⏭ skipped/deferred
 - ✅ **7.** SQLAlchemy 2.x models with `Mapped[...]` / `mapped_column(...)`. All under `apps/api/app/models/`. Cascade deletes from user.
 - ✅ **8.** Alembic configured (`alembic init alembic`, `env.py` reads `DATABASE_URL` from settings, imports `app.models`). Initial migration generated and applied. `alembic_version` table present.
 - ✅ **9a.** Pydantic schemas for all entities under `apps/api/app/schemas/`. Three-schema pattern (`Create`/`Update`/`Read`). `APISchema` base with `from_attributes=True`. `Page[T]` and `PaginationParams` in `common.py` (the latter as a `BaseModel` query model, consumed via `Annotated[PaginationParams, Query()]` — see DECISION 015). `email-validator` installed. Package re-exports via `schemas/__init__.py`. mypy clean (added `pydantic.mypy` plugin to fix a `BaseSettings` call-arg false positive).
-- ⬜ **9b.** CRUD routers under `apps/api/app/routers/` for accounts, categories, transactions, budgets. Use placeholder `user_id` dependency (real Cognito one comes in Phase 4).
-- ⬜ **10.** Seed script using `Faker` to populate local DB with realistic test data.
-- ⬜ **11.** pytest setup with `TestClient`. Test patterns: one happy path per endpoint, one validation failure, one cross-tenant access attempt.
+- ✅ **9b.** CRUD routers under `apps/api/app/routers/` for accounts, categories, transactions, budgets. Five verbs each, `Page[T]` list endpoints, placeholder `get_current_user_id` dependency (real Cognito one comes in Phase 4). Ownership enforced via the generic `get_for_user` helper in `app/crud.py` + the `UserOwned` mixin (see DECISION 017); owned FKs (`account_id`/`category_id`/`parent_id`) validated on create/update. All four wired into `main.py` via `routers/__init__.py` re-exports.
+- ✅ **10.** Seed script (`apps/api/scripts/seed.py`) using `Faker` to populate local DB with realistic test data. Writes through the ORM directly (not the HTTP API), wipes-and-reseeds the dev user (matching `DEV_USER_EMAIL`) via cascade, stamps `user_id` on every owned row, uses `Decimal` money with signed amounts (DECISION 010). Run: `uv run python scripts/seed.py`.
+- ⏳ **11.** pytest setup with `TestClient`. Test patterns: one happy path per endpoint, one validation failure, one cross-tenant access attempt.
 
 ## Phase 3: AWS Infrastructure
 
@@ -79,10 +79,10 @@ Legend: ✅ done · ⏳ in progress · ⬜ not started · ⏭ skipped/deferred
 - The pandas/Lambda cold-start concern: only import pandas in modules that actually use it. Don't put `import pandas` at the top of `main.py`.
 - WSL2 may be worth setting up before Phase 3 — Lambda container packaging is smoother on Linux.
 
-## Known Model Bugs (found during 9a schema review — fix before Phase 3)
+## Known Model Bugs (found during 9a schema review) — ✅ ALL RESOLVED
 
-These are pre-existing issues in the SQLAlchemy models from step 7, surfaced while writing the Pydantic schemas. Each needs a model edit **and** an Alembic migration where the DB schema changes.
+These were pre-existing issues in the SQLAlchemy models from step 7, surfaced while writing the Pydantic schemas. All three are now fixed in the models (verified during the 9b router work).
 
-1. **`transactions.category_id` mismatch.** The column is non-nullable with `ON DELETE CASCADE` ([models/transaction.py](apps/api/app/models/transaction.py)), but CLAUDE principle 5 (soft references) and the `TransactionCreate`/`Read` schemas (which make `category_id` optional) both expect `nullable=True` + `ON DELETE SET NULL`. Deleting a category should orphan its transactions, not delete them. **Fix:** make the column nullable + `SET NULL`, generate a migration. (Schema already assumes the fixed behavior.)
-2. **`Account.transactions` wrong `back_populates`.** [models/account.py](apps/api/app/models/account.py) declares `transactions = relationship(back_populates="user", ...)` — it should be `back_populates="account"`. As written, SQLAlchemy will raise a mapper-configuration error pairing `Account.transactions` with `Transaction.user`. No migration needed (relationship-only). **Catch first** — this likely breaks the first real query/seed.
-3. **`users.email` under-specified.** [models/user.py](apps/api/app/models/user.py) uses `mapped_column("user_email")` with no `String(...)` length cap and no `unique=True`. Email should almost certainly be unique and length-capped. **Fix:** add `String(255)` + `unique=True`, migration.
+1. ✅ **`transactions.category_id` mismatch.** Now `nullable=True` + `ON DELETE SET NULL` ([models/transaction.py](apps/api/app/models/transaction.py)) — deleting a category orphans its transactions rather than deleting them, matching CLAUDE principle 5 and the `TransactionCreate`/`Read` schemas.
+2. ✅ **`Account.transactions` wrong `back_populates`.** Now `back_populates="account"` ([models/account.py](apps/api/app/models/account.py)) — the mapper pairs correctly with `Transaction.account`.
+3. ✅ **`users.email` under-specified.** Now `String(255)` + `unique=True` ([models/user.py](apps/api/app/models/user.py)).

@@ -215,3 +215,24 @@ The audit `created_at` is a separate, timestamped column.
 **Alternative considered:** Hand-clean each migration to pass ruff (the prior approach — the first migration had been manually re-wrapped). Rejected as unsustainable across many future migrations.
 
 **Note:** This only excludes `alembic/versions/`. Migrations are still **reviewed before applying** (CLAUDE rule) — exclusion from the linter is not exclusion from human review.
+
+---
+
+## 017 — CRUD routers explicit, with a single shared ownership-scoped lookup helper
+
+**Decision:** Write the four CRUD routers (accounts, categories, transactions, budgets) explicitly — each spelling out its own list/get/create/patch/delete handlers — rather than generating them from a shared base class or factory. Factor out exactly **one** piece of shared logic: "fetch a row by `id` **and** `user_id`, or raise 404." All other per-router code stays inline and visible.
+
+**Why:**
+
+- **Educational goal first.** Writing the FastAPI mechanics (routing, `Depends`, response models, status codes, pagination) four times cements them. A `CRUDRouter`-style abstraction hides exactly the mechanics this project exists to learn.
+- **The ownership lookup is the one place duplication is a security liability, not just verbosity.** Forgetting the `user_id` filter is the "#1 security bug" (CLAUDE principle 2). Centralizing that single lookup means the dangerous filter is written and reviewed once, not copy-pasted into four routers where one could silently drift.
+- **Explicit routers diverge cleanly.** Transactions need filters and FK-ownership checks accounts don't. Explicit handlers absorb those differences without fighting an abstraction; a generic factory would leak the moment one resource needs something special.
+
+**Critical correctness note:** the helper filters by `id` AND `user_id` *in the same query* and raises 404 on no match. It does **not** fetch by `id` and then compare `row.user_id` in Python — that pulls another tenant's row into memory and invites a 403 that leaks the row's existence. Same query, both conditions, 404 on miss (never 403 — don't reveal that the row exists for another user).
+
+**Typed ownership via a `UserOwned` mixin.** The helper is generic — `def get_owned_or_404[ModelT: UserOwned](...) -> ModelT` — so the return type tracks the concrete model passed in (pass `Account`, get an `Account` back). For that generic's bound to mean anything, the type it's bound to must actually declare the columns the helper filters on. So the four owned models inherit a `UserOwned` mixin (in `app/db.py`, alongside `Base`) that declares the shared `id` (UUID PK, `default=uuid.uuid4`) and `user_id` (FK → `users.id`, `ON DELETE CASCADE`) columns. mypy then knows every `ModelT` has `.id` and `.user_id` to filter on. `User` does **not** inherit the mixin — it has no `user_id`. Because the relocated columns are identical to the per-model declarations they replace, this needs **no migration** (verify with an autogenerate that yields an empty diff). Bonus: CLAUDE principle 2 ("every owned table has a `user_id`") becomes structurally enforced — an owned model can't be declared without it.
+
+**Alternatives considered:**
+
+- **Fully explicit (no shared helper).** Cleanest to read, but copies the security-critical `user_id` filter into four places — rejected for that reason alone.
+- **Generic CRUD base class / router factory.** Least code, but hides the mechanics being learned and leaks under per-resource special cases (transaction filters). Deferred; revisit only if the routers prove genuinely uniform at scale.

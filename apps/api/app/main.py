@@ -4,11 +4,17 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.routers import accounts_router, budgets_router, categories_router, transactions_router
 
 app = FastAPI(
     title="Budgeting API",
     version="0.1.0",
 )
+
+app.include_router(accounts_router)
+app.include_router(categories_router)
+app.include_router(transactions_router)
+app.include_router(budgets_router)
 
 
 @app.get("/health")

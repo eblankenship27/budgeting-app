@@ -148,7 +148,7 @@ The repo uses a `.gitattributes` file that normalizes all text files to LF in th
 See `PROGRESS.md` for the detailed checklist with completion status. Summary:
 
 - **Phase 1: Foundations** — monorepo, dev tools, FastAPI hello-world, local Postgres ✅
-- **Phase 2: Data Model & Core API** — SQLAlchemy models + Alembic ✅ / Pydantic schemas ✅ / CRUD routers ⏳
+- **Phase 2: Data Model & Core API** — SQLAlchemy models + Alembic ✅ / Pydantic schemas ✅ / CRUD routers ✅ / seed script ✅ / tests ⏳
 - **Phase 3: AWS Infrastructure** — CDK, Lambda, RDS Proxy
 - **Phase 4: Authentication** — Cognito, scoped queries
 - **Phase 5: Web Frontend** — Next.js, auth, dashboard, analytics endpoints (where pandas enters)
@@ -158,15 +158,13 @@ See `PROGRESS.md` for the detailed checklist with completion status. Summary:
 
 ## What's Next
 
-The immediate next step is **Phase 2 / Step 9: CRUD routers**. Build FastAPI routers for accounts, categories, transactions, and budgets. Don't worry about auth yet — a placeholder `user_id` dependency will be replaced with the real Cognito-derived one in Phase 4. The routers should:
+CRUD routers for all four entities are **done** (Step 9b) — five verbs each, `Page[T]` list endpoints, ownership enforced via the generic `get_for_user` helper (`app/crud.py`) + the `UserOwned` mixin (DECISION 017), all wired into `main.py`. The placeholder `get_current_user_id` dependency stands in until Phase 4 Cognito.
 
-- Use the Pydantic schemas already defined for input/output
-- Use `Depends(get_db)` for DB sessions
-- Return `Page[T]` for list endpoints
-- Enforce that you can only access *your own* data (even with the placeholder user)
-- Cover the seven HTTP verbs cleanly: `GET /resource`, `GET /resource/{id}`, `POST /resource`, `PATCH /resource/{id}`, `DELETE /resource/{id}`
+The immediate next step is **Phase 2 / Step 10: the seed script** — `Faker`-driven realistic data (dev user matching `DEV_USER_EMAIL`, accounts, categories, transactions, budgets), written through the ORM directly (not the HTTP API), stamping `user_id` on every owned row and using `Decimal` for money.
 
-After routers come tests, then a seed script (`Faker` for realistic data), then AWS infra.
+After the seed comes **Step 11: pytest + `TestClient`** — one happy path, one validation failure, and one cross-tenant access attempt (expect 404) per endpoint — then AWS infra (Phase 3).
+
+See `docs/NEXT.md` for the detailed router/seed working notes and `docs/REVIEW.md` for the self-review checklist.
 
 ## Key Files to Read First
 
