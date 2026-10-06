@@ -26,7 +26,7 @@ def budget_create(
         category_id=budget_create.category_id,
         period=budget_create.period,
         start_date=budget_create.start_date,
-        user_id=user_id
+        user_id=user_id,
     )
     db.add(budget)
     db.commit()

@@ -76,7 +76,7 @@ def category_update(
 ):
     category = get_for_user(db, Category, category_id, user_id)
     if category_updates.parent_id is not None:
-        get_for_user(db,Category, category_updates.parent_id, user_id)
+        get_for_user(db, Category, category_updates.parent_id, user_id)
     for name, value in category_updates.model_dump(exclude_unset=True).items():
         setattr(category, name, value)
     db.commit()

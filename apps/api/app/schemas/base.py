@@ -5,6 +5,7 @@ class APISchema(BaseModel):
     """Base for all API Schemas"""
 
     model_config = ConfigDict(
+        extra="forbid",
         from_attributes=True,
         str_strip_whitespace=True,
     )

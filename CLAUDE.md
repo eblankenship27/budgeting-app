@@ -148,7 +148,7 @@ The repo uses a `.gitattributes` file that normalizes all text files to LF in th
 See `PROGRESS.md` for the detailed checklist with completion status. Summary:
 
 - **Phase 1: Foundations** — monorepo, dev tools, FastAPI hello-world, local Postgres ✅
-- **Phase 2: Data Model & Core API** — SQLAlchemy models + Alembic ✅ / Pydantic schemas ✅ / CRUD routers ✅ / seed script ✅ / tests ⏳
+- **Phase 2: Data Model & Core API** — SQLAlchemy models + Alembic ✅ / Pydantic schemas ✅ / CRUD routers ✅ / seed script ✅ / tests ✅ **(Phase 2 complete)**
 - **Phase 3: AWS Infrastructure** — CDK, Lambda, RDS Proxy
 - **Phase 4: Authentication** — Cognito, scoped queries
 - **Phase 5: Web Frontend** — Next.js, auth, dashboard, analytics endpoints (where pandas enters)
@@ -158,11 +158,21 @@ See `PROGRESS.md` for the detailed checklist with completion status. Summary:
 
 ## What's Next
 
-CRUD routers for all four entities are **done** (Step 9b) — five verbs each, `Page[T]` list endpoints, ownership enforced via the generic `get_for_user` helper (`app/crud.py`) + the `UserOwned` mixin (DECISION 017), all wired into `main.py`. The placeholder `get_current_user_id` dependency stands in until Phase 4 Cognito.
+**Phase 2 is complete.** Models + migrations, Pydantic schemas, CRUD routers for all four entities, the `Faker` seed script, and the pytest suite are all done. 37 tests pass; `ruff check`, `ruff format --check`, and `mypy app` are clean.
 
-The immediate next step is **Phase 2 / Step 10: the seed script** — `Faker`-driven realistic data (dev user matching `DEV_USER_EMAIL`, accounts, categories, transactions, budgets), written through the ORM directly (not the HTTP API), stamping `user_id` on every owned row and using `Decimal` for money.
+The immediate next step is **Phase 3 / Step 3: the AWS budget alert** ($10–20/month, notifications at 50/80/100%). Do this *before* `cdk bootstrap` or any deploy — it's the only guard against a runaway bill while learning CDK. Then Step 12 (CDK project in `infra/cdk/`) and Step 13 (Aurora Serverless v2 + Lambda + API Gateway).
 
-After the seed comes **Step 11: pytest + `TestClient`** — one happy path, one validation failure, and one cross-tenant access attempt (expect 404) per endpoint — then AWS infra (Phase 3).
+### Testing notes (for future sessions)
+
+- Tests need Docker running and a `budgeting_test` database alongside `budgeting_dev` in the same container. The schema is created and dropped per run, so that DB is empty between runs — that's expected, not a bug.
+- `tests/conftest.py` isolates each test by rolling back an outer transaction. Routers call `commit()` freely because the session is bound with `join_transaction_mode="create_savepoint"`.
+- Run from `apps/api`, not the repo root — `Settings` resolves `.env` relative to the current working directory.
+- Assert on the `loc` of a 422 error, never on `msg`; message wording is a Pydantic version detail.
+- Cross-tenant attempts must return **404, not 403**. A 403 would confirm the row exists and leak another tenant's data. `tests/test_crud.py` pins this.
+
+### Open decision
+
+Write schemas inherit Pydantic's default `extra="ignore"`, so a misspelled field in a request body is silently dropped rather than rejected (a typo'd `initial_balance` posts an account with a zero balance and returns 201). `PaginationParams` already sets `extra="forbid"`. Decide whether `APISchema` should do the same — it would turn client typos into 422s, at the cost of rejecting forward-compatible clients that send unknown fields.
 
 See `docs/NEXT.md` for the detailed router/seed working notes and `docs/REVIEW.md` for the self-review checklist.
 
