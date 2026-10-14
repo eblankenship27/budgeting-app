@@ -136,12 +136,52 @@ budgeting-app/
 - **Node:** LTS via nvm-windows. `.nvmrc` pinned at the repo root.
 - **Docker Desktop** for local Postgres.
 - **AWS region:** us-east-2 (Ohio — close to Boston, fewer outages than us-east-1).
-- **AWS IAM user:** `budgeting-app-dev` with `AdministratorAccess` for now (tighten later).
-- **Budget alert:** $10–20/month with notifications at 50/80/100% — set up before any AWS deploys.
+- **AWS account:** `001945408785`.
+- **Budget alert:** created in the Billing console as account root, notification-only (no budget actions — see `PROGRESS.md` step 3 for why). Billing is account-level: IAM users get no access to it until the root user enables "IAM user and role access to billing information", so budget work can't be done from the CLI with these credentials.
 
-## Line Endings (Windows)
+### AWS access model
+
+Deliberately **assume-role only**. The long-lived access key holds almost no power; roles hold the permissions.
+
+| Identity | Permissions | Used for |
+| --- | --- | --- |
+| `budget-app-dev` (IAM user) | one inline policy, `AssumeBudgetingDeployRole`: `sts:AssumeRole` on `budgeting-app-deploy` only | holding the static access key in `~/.aws/credentials`; nothing else |
+| `budgeting-app-deploy` (role) | customer-managed `CdkDeployAssumeRoles`: `sts:AssumeRole` on the four `cdk-hnb659fds-*` bootstrap roles + `ssm:GetParameter` on `/cdk-bootstrap/hnb659fds/version` | every `cdk deploy` / `cdk diff` |
+| `cdk-hnb659fds-cfn-exec-role-...` | `AdministratorAccess` (bootstrap default) | assumed by **CloudFormation**, never by you — this is what actually creates resources |
+
+The CLI profile in `~/.aws/config` does the exchange automatically:
+
+```ini
+[profile budgeting-deploy]
+role_arn = arn:aws:iam::001945408785:role/budgeting-app-deploy
+source_profile = default
+region = us-east-2
+```
+
+Verify with `aws sts get-caller-identity --profile budgeting-deploy` — the ARN must come back as `assumed-role/budgeting-app-deploy/...`, not `user/budget-app-dev`.
+
+**Why this shape:** a leaked access key can only open an hour-long session on one named role, visible in CloudTrail and revocable by editing one trust policy (no key rotation). Don't add permissions to `budget-app-dev` — add them to a role. Not even `iam:Get*` on itself; that's how users quietly accumulate ambient power.
+
+**Don't add `AdministratorAccess` back to `budgeting-app-deploy`.** Two consequences to plan around instead:
+
+1. **`cdk bootstrap` will fail** under the narrowed policy — it creates IAM roles, an S3 bucket, an ECR repo and SSM parameters. This matters when a CDK upgrade demands a newer bootstrap version (currently at **32**).
+2. **No IAM visibility.** Inspecting or changing IAM now requires the root console.
+
+Both are solved by a second assumable role — **not yet created** — e.g. `budgeting-app-admin` with `AdministratorAccess`, the same trust policy pointing at `budget-app-dev`, that ARN added to the user's inline policy, and its own CLI profile. Root then goes back to being reserved for genuinely account-level work (billing, support plans, closing the account). An MFA condition on *that* role's trust policy is where MFA is worth the friction.
+
+**Verify a permission change by confirming what it forbids,** not just what it allows: after narrowing, `aws iam list-roles --profile budgeting-deploy` must return `AccessDenied` while the `sts:AssumeRole` calls still succeed. Same reasoning as the cross-tenant 404 tests.
+
+## Windows Gotchas
+
+### Line endings
 
 The repo uses a `.gitattributes` file that normalizes all text files to LF in the repo, with `.ps1`/`.bat`/`.cmd` files explicitly CRLF. Don't disable this. After any `.gitattributes` change, run `git add --renormalize .`.
+
+### Git Bash mangles AWS paths and ARNs
+
+Git Bash (MSYS) rewrites any argument that looks like a Unix absolute path into a Windows path before the program sees it. `aws ssm get-parameter --name /cdk-bootstrap/hnb659fds/version` silently became `C:/Program Files/Git/cdk-bootstrap/...` and returned `ParameterNotFound` — a wrong answer, not an error, which looks exactly like a broken bootstrap.
+
+Run AWS commands from **PowerShell**, or prefix with `MSYS_NO_PATHCONV=1`, or double the leading slash (`//cdk-bootstrap/...`). Expect this with SSM parameter paths and IAM ARNs.
 
 ## Project Phases & Status
 
@@ -160,7 +200,11 @@ See `PROGRESS.md` for the detailed checklist with completion status. Summary:
 
 **Phase 2 is complete.** Models + migrations, Pydantic schemas, CRUD routers for all four entities, the `Faker` seed script, and the pytest suite are all done. 37 tests pass; `ruff check`, `ruff format --check`, and `mypy app` are clean.
 
-The immediate next step is **Phase 3 / Step 3: the AWS budget alert** ($10–20/month, notifications at 50/80/100%). Do this *before* `cdk bootstrap` or any deploy — it's the only guard against a runaway bill while learning CDK. Then Step 12 (CDK project in `infra/cdk/`) and Step 13 (Aurora Serverless v2 + Lambda + API Gateway).
+**Phase 3 has started.** The budget alert (step 3) is in place, the assume-role access model is set up and narrowed (see Environment above), and `cdk bootstrap` has run against `aws://001945408785/us-east-2` — bootstrap stack `CDKToolkit` is `CREATE_COMPLETE` at version 32.
+
+The immediate next step is the rest of **Step 12**: `infra/cdk/` is still empty, so there's no CDK app. Run `cdk init app --language python` there (hence the `--app is required` error from any `cdk diff` until then). Then Step 13 (Aurora Serverless v2 + Lambda + API Gateway).
+
+Two cost decisions to make deliberately in Step 13, since they're what keep this account inside the budget: Aurora Serverless v2 **min capacity 0.5 ACU**, and the habit of `cdk destroy` when not actively working — the budget alert is detection, `cdk destroy` is the response.
 
 ### Testing notes (for future sessions)
 

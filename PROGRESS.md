@@ -10,7 +10,7 @@ Legend: ✅ done · ⏳ in progress · ⬜ not started · ⏭ skipped/deferred
 
 - ✅ **1.** Set up monorepo (`apps/`, `packages/`, `infra/cdk`) with `pnpm-workspace.yaml` + root `package.json` (private, workspaces). Git initialized.
 - ✅ **2.** Install Python 3.12+, Node LTS (nvm-windows), AWS CLI. Configure `aws configure` with `budgeting-app-dev` IAM user.
-- ⬜ **3.** AWS budget alert ($10–20/month, alerts at 50/80/100%). **Do this before any AWS deploy in Phase 3.**
+- ✅ **3.** AWS budget alert created in the Billing console as the account root (the `budget-app-dev` IAM user has no billing permissions, so this could not be done from the CLI). Notification-only — no budget actions, deliberately: actions can't stop Lambda or an Aurora cluster, carry a per-day charge, and an IAM-deny action risks locking the dev user out of `cdk destroy`. The real cost control is tearing stacks down when not in use.
 - ✅ **4.** FastAPI project in `apps/api` with `uv`. Hello-world `/health` endpoint running under `uvicorn app.main:app --reload`. Mangum handler defined (unused locally).
 - ✅ **5.** Postgres 16 running locally via Docker Compose at `localhost:5432`. Credentials: `budgeting/budgeting/budgeting_dev`. `/health/db` endpoint confirms connection.
 
@@ -26,7 +26,7 @@ Legend: ✅ done · ⏳ in progress · ⬜ not started · ⏭ skipped/deferred
 
 ## Phase 3: AWS Infrastructure
 
-- ⬜ **12.** Set up AWS CDK with Python in `infra/cdk/`. `cdk bootstrap` for account/region.
+- ⏳ **12.** `cdk bootstrap` done — `aws://001945408785/us-east-2`, stack `CDKToolkit` `CREATE_COMPLETE`, bootstrap version 32, run through the `budgeting-app-deploy` role. Access model set up and narrowed to assume-role only (see CLAUDE.md → Environment → AWS access model). **Still to do:** `infra/cdk/` is empty — run `cdk init app --language python` there. Until an app exists, every `cdk` command fails with `--app is required`.
 - ⬜ **13.** CDK stack: Aurora Serverless v2 Postgres (or `db.t4g.micro` for cheaper dev) + Lambda + API Gateway + IAM.
 - ⬜ **14.** Package FastAPI for Lambda. Recommended: Lambda container image (FastAPI deps are heavy). Mangum already wired into `main.py`.
 - ⬜ **15.** First successful `cdk deploy`. Debug cold starts, DB connectivity, IAM. **This step teaches the most.**
