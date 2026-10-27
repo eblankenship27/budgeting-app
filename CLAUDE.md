@@ -24,7 +24,7 @@ A personal **budgeting app** being built as a learning project to practice Pytho
 ### Database
 
 - **PostgreSQL 16** (local: Docker Compose, prod: Aurora Serverless v2)
-- Connection through **RDS Proxy** in production (Lambda + RDS connection pooling)
+- Lambda connects **directly to the Aurora cluster** with `pool_size=1, max_overflow=0` plus reserved concurrency. **RDS Proxy** is deployed once in step 16 to learn it, then torn down. It has an ~$87/month floor on Serverless v2 (DECISION 018).
 
 ### Infrastructure
 
@@ -189,7 +189,7 @@ See `PROGRESS.md` for the detailed checklist with completion status. Summary:
 
 - **Phase 1: Foundations** — monorepo, dev tools, FastAPI hello-world, local Postgres ✅
 - **Phase 2: Data Model & Core API** — SQLAlchemy models + Alembic ✅ / Pydantic schemas ✅ / CRUD routers ✅ / seed script ✅ / tests ✅ **(Phase 2 complete)**
-- **Phase 3: AWS Infrastructure** — CDK, Lambda, RDS Proxy
+- **Phase 3: AWS Infrastructure** — CDK, Lambda, RDS Proxy (deploy-once learning exercise, DECISION 018)
 - **Phase 4: Authentication** — Cognito, scoped queries
 - **Phase 5: Web Frontend** — Next.js, auth, dashboard, analytics endpoints (where pandas enters)
 - **Phase 6: Bank Connectivity** — Plaid sandbox, transaction sync

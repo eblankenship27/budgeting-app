@@ -46,7 +46,7 @@ Architecture decisions and their reasoning. New decisions append as new entries 
 
 **Alternative considered:** DynamoDB. Rejected — fighting NoSQL for relational data is painful, and Postgres' window functions and aggregations are exactly what budgeting analytics need.
 
-**Connection pooling concern:** Lambda + RDS without RDS Proxy causes connection exhaustion. RDS Proxy is mandatory in prod (Phase 3, step 16).
+**Connection pooling concern:** Lambda + RDS without RDS Proxy causes connection exhaustion. ~~RDS Proxy is mandatory in prod (Phase 3, step 16).~~ Superseded by DECISION 018: the proxy is deployed once for learning, then removed.
 
 ---
 
@@ -236,3 +236,28 @@ The audit `created_at` is a separate, timestamped column.
 
 - **Fully explicit (no shared helper).** Cleanest to read, but copies the security-critical `user_id` filter into four places — rejected for that reason alone.
 - **Generic CRUD base class / router factory.** Least code, but hides the mechanics being learned and leaks under per-resource special cases (transaction filters). Deferred; revisit only if the routers prove genuinely uniform at scale.
+
+---
+
+## 018 — RDS Proxy: deploy once to learn it, then remove it
+
+**Decision:** Step 16 deploys RDS Proxy in front of Aurora a single time. The goal is to learn the setup: the proxy construct, its Secrets Manager or IAM auth, pointing the Lambda's `DATABASE_URL` at the proxy endpoint, and checking connections in CloudWatch. After that session the proxy is removed from the stack and redeployed without it. The steady-state dev stack has no proxy.
+
+**Why:**
+
+- **Cost floor.** For Aurora Serverless v2, RDS Proxy bills per ACU-hour of the database with an **8-ACU minimum**, about $0.015/ACU-hour in the US. That works out to roughly **$87/month** even when the database is scaled to 0 ACU. The proxy has no pause, so it would be most of the bill for a learning project.
+- **Auto-pause.** Connections the proxy holds may also stop Aurora from pausing at 0 ACU. This is unverified; check the Aurora auto-pause docs before relying on it either way.
+- **The problem doesn't exist at this scale.** Connection exhaustion needs many concurrent Lambda environments. Two settings bound total connections without a proxy:
+  - `pool_size=1, max_overflow=0` on the engine under Lambda (each environment serves one request at a time).
+  - **Reserved concurrency** on the Lambda (e.g. 10), which caps environments and therefore connections.
+- **The learning still happens.** The proxy is billed per second with a 10-minute minimum, so one deploy-and-destroy session costs cents.
+
+**How to apply:**
+
+- Build the proxy as a separate stack (e.g. `BudgetingProxyDev`), or behind a CDK context flag (`cdk deploy -c withProxy=true`), so removing it is a clean `cdk destroy` or redeploy, not a hand edit of `DbStack`.
+- After the session, confirm it's gone with `aws rds describe-db-proxies --profile budgeting-deploy`. That command must return an empty list. The budget alert would only catch a forgotten proxy weeks later.
+- The default Lambda wiring connects **directly to the Aurora cluster endpoint**. `ApiStack` must not require a proxy to exist.
+
+**Revisit when:** real traffic arrives, Lambda concurrency needs to go well above the reserved cap, or this becomes a production deployment rather than a learning account.
+
+**Alternative considered:** keeping the proxy permanently, which matches the original DECISION 003 note. Rejected on cost: roughly $87/month for protection against a load this project doesn't have.

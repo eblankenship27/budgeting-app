@@ -30,7 +30,7 @@ Legend: ✅ done · ⏳ in progress · ⬜ not started · ⏭ skipped/deferred
 - ⬜ **13.** CDK stack: Aurora Serverless v2 Postgres (or `db.t4g.micro` for cheaper dev) + Lambda + API Gateway + IAM.
 - ⬜ **14.** Package FastAPI for Lambda. Recommended: Lambda container image (FastAPI deps are heavy). Mangum already wired into `main.py`.
 - ⬜ **15.** First successful `cdk deploy`. Debug cold starts, DB connectivity, IAM. **This step teaches the most.**
-- ⬜ **16.** Add RDS Proxy in front of the DB. Update Lambda env to connect through proxy.
+- ⬜ **16.** **Learning exercise, then teardown (DECISION 018).** Deploy RDS Proxy once in front of the DB, point the Lambda at the proxy endpoint, and observe connections. Then remove the proxy and verify `aws rds describe-db-proxies` returns empty. It has an ~$87/month floor on Aurora Serverless v2 (8-ACU minimum). Steady state: the Lambda connects directly to the cluster with `pool_size=1, max_overflow=0` plus reserved concurrency.
 - ⬜ **17.** Run Alembic migrations against AWS Postgres. Decide on migration strategy (separate Lambda vs. CI step).
 
 ## Phase 4: Authentication
