@@ -9,7 +9,7 @@ Legend: ✅ done · ⏳ in progress · ⬜ not started · ⏭ skipped/deferred
 ## Phase 1: Foundations & Local Setup
 
 - ✅ **1.** Set up monorepo (`apps/`, `packages/`, `infra/cdk`) with `pnpm-workspace.yaml` + root `package.json` (private, workspaces). Git initialized.
-- ✅ **2.** Install Python 3.12+, Node LTS (nvm-windows), AWS CLI. Configure `aws configure` with `budgeting-app-dev` IAM user.
+- ✅ **2.** Install Python 3.12+, Node LTS (nvm-windows), AWS CLI. Configure `aws configure` with `budget-app-dev` IAM user.
 - ✅ **3.** AWS budget alert created in the Billing console as the account root (the `budget-app-dev` IAM user has no billing permissions, so this could not be done from the CLI). Notification-only — no budget actions, deliberately: actions can't stop Lambda or an Aurora cluster, carry a per-day charge, and an IAM-deny action risks locking the dev user out of `cdk destroy`. The real cost control is tearing stacks down when not in use.
 - ✅ **4.** FastAPI project in `apps/api` with `uv`. Hello-world `/health` endpoint running under `uvicorn app.main:app --reload`. Mangum handler defined (unused locally).
 - ✅ **5.** Postgres 16 running locally via Docker Compose at `localhost:5432`. Credentials: `budgeting/budgeting/budgeting_dev`. `/health/db` endpoint confirms connection.
@@ -26,11 +26,17 @@ Legend: ✅ done · ⏳ in progress · ⬜ not started · ⏭ skipped/deferred
 
 ## Phase 3: AWS Infrastructure
 
-- ⏳ **12.** `cdk bootstrap` done — `aws://001945408785/us-east-2`, stack `CDKToolkit` `CREATE_COMPLETE`, bootstrap version 32, run through the `budgeting-app-deploy` role. Access model set up and narrowed to assume-role only (see CLAUDE.md → Environment → AWS access model). **Still to do:** `infra/cdk/` is empty — run `cdk init app --language python` there. Until an app exists, every `cdk` command fails with `--app is required`.
-- ⬜ **13.** CDK stack: Aurora Serverless v2 Postgres (or `db.t4g.micro` for cheaper dev) + Lambda + API Gateway + IAM.
+- ✅ **12.** `cdk bootstrap` done: `aws://001945408785/us-east-2`, stack `CDKToolkit` at bootstrap version 32, run through the `budgeting-app-deploy` role. Access model narrowed to assume-role only, plus a `budgeting-app-viewer` role (`ViewOnlyAccess`) for inspecting resources (see CLAUDE.md → AWS access model). CDK app created with `cdk init app --language python` in `infra/cdk` (pip venv, `app.py`, `stacks/`).
+- ⏳ **13.** **`DbStack` done** (`BudgetingDbDev`, DECISION 019): a VPC with 2 isolated subnets and no NAT gateway, and Aurora Serverless v2 on Postgres 16.13 (min 0 / max 1 ACU, auto-pause after 300 s, encrypted, IAM auth, `RemovalPolicy.DESTROY`). 5 template tests in `infra/cdk/tests/unit/test_db_stack.py`. Deployed, checked with the viewer profile, then destroyed. Problems hit along the way:
+  - **Free-plan accounts can't create a regular Aurora cluster** ("you need to set WithExpressConfiguration"). The account was upgraded to the Paid plan.
+  - **The engine version had been retired.** 16.6 was gone, so the cluster now uses 16.13.
+  - **The CDK CLI was older than `aws-cdk-lib`** (cloud assembly schema mismatch). Fixed by upgrading the CLI.
+  - **Still to check:** whether the automated `rds:` backup snapshot is deleted along with the cluster.
+
+  **Still to do:** `ApiStack`: Lambda + API Gateway + the security group rule allowing the Lambda into the DB.
 - ⬜ **14.** Package FastAPI for Lambda. Recommended: Lambda container image (FastAPI deps are heavy). Mangum already wired into `main.py`.
 - ⬜ **15.** First successful `cdk deploy`. Debug cold starts, DB connectivity, IAM. **This step teaches the most.**
-- ⬜ **16.** **Learning exercise, then teardown (DECISION 018).** Deploy RDS Proxy once in front of the DB, point the Lambda at the proxy endpoint, and observe connections. Then remove the proxy and verify `aws rds describe-db-proxies` returns empty. It has an ~$87/month floor on Aurora Serverless v2 (8-ACU minimum). Steady state: the Lambda connects directly to the cluster with `pool_size=1, max_overflow=0` plus reserved concurrency.
+- ⬜ **16.** **Learning exercise, then teardown (DECISION 018).** Deploy RDS Proxy once in front of the DB, point the Lambda at the proxy endpoint, and observe connections. Then remove the proxy and verify `aws rds describe-db-proxies` returns empty. This needs a read-capable profile; `budgeting-deploy` gets `AccessDenied`. It has an ~$87/month floor on Aurora Serverless v2 (8-ACU minimum). Steady state: the Lambda connects directly to the cluster with `pool_size=1, max_overflow=0` plus reserved concurrency.
 - ⬜ **17.** Run Alembic migrations against AWS Postgres. Decide on migration strategy (separate Lambda vs. CI step).
 
 ## Phase 4: Authentication

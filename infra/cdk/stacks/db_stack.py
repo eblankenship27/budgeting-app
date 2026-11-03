@@ -27,7 +27,7 @@ class DbStack(cdk.Stack):
             self,
             "Cluster",
             engine=rds.DatabaseClusterEngine.aurora_postgres(
-                version=rds.AuroraPostgresEngineVersion.VER_16_6,
+                version=rds.AuroraPostgresEngineVersion.VER_16_13,
             ),
             writer=rds.ClusterInstance.serverless_v2("writer"),
             serverless_v2_min_capacity=0,

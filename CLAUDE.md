@@ -147,6 +147,7 @@ Deliberately **assume-role only**. The long-lived access key holds almost no pow
 | --- | --- | --- |
 | `budget-app-dev` (IAM user) | one inline policy, `AssumeBudgetingDeployRole`: `sts:AssumeRole` on `budgeting-app-deploy` only | holding the static access key in `~/.aws/credentials`; nothing else |
 | `budgeting-app-deploy` (role) | customer-managed `CdkDeployAssumeRoles`: `sts:AssumeRole` on the four `cdk-hnb659fds-*` bootstrap roles + `ssm:GetParameter` on `/cdk-bootstrap/hnb659fds/version` | every `cdk deploy` / `cdk diff` |
+| `budgeting-app-viewer` (role) | AWS-managed `ViewOnlyAccess` (lists and describes resources; can't read data such as secret values). Trust policy names `budget-app-dev` directly. | observing deployed resources: `--profile budgeting-view` |
 | `cdk-hnb659fds-cfn-exec-role-...` | `AdministratorAccess` (bootstrap default) | assumed by **CloudFormation**, never by you — this is what actually creates resources |
 
 The CLI profile in `~/.aws/config` does the exchange automatically:
@@ -154,6 +155,11 @@ The CLI profile in `~/.aws/config` does the exchange automatically:
 ```ini
 [profile budgeting-deploy]
 role_arn = arn:aws:iam::001945408785:role/budgeting-app-deploy
+source_profile = default
+region = us-east-2
+
+[profile budgeting-view]
+role_arn = arn:aws:iam::001945408785:role/budgeting-app-viewer
 source_profile = default
 region = us-east-2
 ```
@@ -202,9 +208,22 @@ See `PROGRESS.md` for the detailed checklist with completion status. Summary:
 
 **Phase 3 has started.** The budget alert (step 3) is in place, the assume-role access model is set up and narrowed (see Environment above), and `cdk bootstrap` has run against `aws://001945408785/us-east-2` — bootstrap stack `CDKToolkit` is `CREATE_COMPLETE` at version 32.
 
-The immediate next step is the rest of **Step 12**: `infra/cdk/` is still empty, so there's no CDK app. Run `cdk init app --language python` there (hence the `--app is required` error from any `cdk diff` until then). Then Step 13 (Aurora Serverless v2 + Lambda + API Gateway).
+**Step 12 is done and Step 13 is half done.** `infra/cdk/` holds a CDK app with one stack, `DbStack` (`BudgetingDbDev`): a VPC with no NAT gateway and two isolated subnets, plus an Aurora Serverless v2 cluster on Postgres 16.13. It has been deployed, checked against the real account, and destroyed. Five template assertions in `infra/cdk/tests/unit/test_db_stack.py` pin its cost and security settings (DECISION 019). The account was upgraded from the AWS Free plan to the Paid plan, because Free-plan accounts can't create a regular Aurora cluster.
 
-Two cost decisions to make deliberately in Step 13, since they're what keep this account inside the budget: Aurora Serverless v2 **min capacity 0.5 ACU**, and the habit of `cdk destroy` when not actively working — the budget alert is detection, `cdk destroy` is the response.
+The immediate next step is **Step 14**: a `Dockerfile` in `apps/api` built on the Lambda Python base image, tested locally with the built-in emulator. Then the rest of Step 13: `ApiStack` (`DockerImageFunction` + API Gateway + a security group rule allowing the Lambda into the cluster). That rule will intentionally break `test_database_unreachable_until_granted`. Update the test to name exactly which source is allowed.
+
+Open item: check whether destroying the cluster also deletes its automated `rds:` backup snapshot. If one survives `cdk destroy`, add `delete_automated_backups=True` and a test for it.
+
+Cost habits: `cdk destroy` whenever you're not actively working. The budget alert only tells you after money is spent; destroying the stack is what actually stops it. On the Paid plan nothing caps spending once credits run out.
+
+### CDK workflow notes (for future sessions)
+
+- Run every `cdk` command from `infra/cdk` with **its own venv active** (`.venv\Scripts\Activate.ps1`). It's pip-managed, not uv, so `uv run` doesn't apply there. Tests: `python -m pytest`, never bare `pytest`.
+- A fresh venv needs **both** files: `python -m pip install -r requirements.txt -r requirements-dev.txt`.
+- **The CDK CLI must be at least as new as `aws-cdk-lib`.** If `cdk` reports a "cloud assembly schema version mismatch", run `npm install -g aws-cdk`.
+- **Venvs can't be moved.** If the repo folder moves, delete `.venv` and recreate it.
+- **AWS retires Aurora minor versions.** Synth and unit tests can't catch a retired version; only a deploy does. Pick a version from `aws rds describe-db-engine-versions --engine aurora-postgresql --profile budgeting-view`.
+- Deploy and destroy with `--profile budgeting-deploy`. Inspect with `--profile budgeting-view`. The view role can't list or read secrets.
 
 ### Testing notes (for future sessions)
 

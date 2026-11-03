@@ -255,9 +255,38 @@ The audit `created_at` is a separate, timestamped column.
 **How to apply:**
 
 - Build the proxy as a separate stack (e.g. `BudgetingProxyDev`), or behind a CDK context flag (`cdk deploy -c withProxy=true`), so removing it is a clean `cdk destroy` or redeploy, not a hand edit of `DbStack`.
-- After the session, confirm it's gone with `aws rds describe-db-proxies --profile budgeting-deploy`. That command must return an empty list. The budget alert would only catch a forgotten proxy weeks later.
+- After the session, confirm it's gone with `aws rds describe-db-proxies`. That command must return an empty list. Run it with a profile that has `rds:Describe*`. `budgeting-deploy` doesn't: it can only assume the CDK bootstrap roles, so the command returns `AccessDenied`. The budget alert would only catch a forgotten proxy weeks later.
 - The default Lambda wiring connects **directly to the Aurora cluster endpoint**. `ApiStack` must not require a proxy to exist.
 
 **Revisit when:** real traffic arrives, Lambda concurrency needs to go well above the reserved cap, or this becomes a production deployment rather than a learning account.
 
 **Alternative considered:** keeping the proxy permanently, which matches the original DECISION 003 note. Rejected on cost: roughly $87/month for protection against a load this project doesn't have.
+
+---
+
+## 019 — Dev `DbStack`: isolated VPC, Aurora that can pause to zero, IAM auth
+
+**Decision:** The dev database stack (`infra/cdk/stacks/db_stack.py`) is configured for minimum idle cost:
+
+- A **VPC with `nat_gateways=0`** and two `PRIVATE_ISOLATED` subnets (`/24`). There is no internet route in or out.
+- **Aurora Serverless v2 with `min_capacity=0`, `max_capacity=1`**. At 0 the instance pauses after 300 s idle (requires Postgres 16.3+). This replaces the earlier plan of a 0.5 ACU minimum.
+- **`iam_authentication=True`**, so the Lambda will connect with a token signed by its own role. The master password is generated into Secrets Manager and is used only to create the IAM-auth user.
+- **`storage_encrypted=True`.** CDK's default is `False` unless you pass a KMS key.
+- **`RemovalPolicy.DESTROY`**, so `cdk destroy` leaves no final snapshot behind. **Dev only; never in prod.**
+
+Each of these is pinned by a test in `infra/cdk/tests/unit/test_db_stack.py`.
+
+**Why:**
+
+- **NAT gateways cost about $32/month each, per AZ, even when idle.** CDK's default VPC creates one per AZ.
+- **A 0.5 ACU floor costs about $43/month if it runs 24/7. Pausing at 0 costs $0 for compute while idle.** The tradeoff is roughly a 15 s resume on the first query after a pause, which is acceptable for dev.
+- **The isolated subnets have no route to Secrets Manager**, so IAM auth is what makes them workable: the Lambda signs its token locally and never needs to fetch a password over the network. Without IAM auth, you'd need a NAT gateway or a Secrets Manager VPC endpoint (about $7/month per AZ).
+- **A max of 1 ACU is the cost ceiling.** A runaway query can't scale the bill.
+
+**Account plan:** AWS Free-plan accounts can only create Aurora with "express configuration". That mode has no VPC, a public endpoint, and no CloudFormation support. The account was upgraded to the Paid plan instead, to keep the standard VPC-based architecture (and Step 16's RDS Proxy, which needs a VPC). As a result, nothing caps spending once credits run out. The budget alert and `cdk destroy` are now the cost controls.
+
+**Alternatives considered:**
+
+- **`db.t4g.micro` provisioned RDS:** cheap, but it doesn't pause, and the project targets Aurora.
+- **Aurora express configuration on the Free plan:** rejected for losing the VPC and needing hand-written custom resources.
+- **Password auth plus a Secrets Manager VPC endpoint:** rejected because it adds about $7/month per AZ for no learning gain over IAM auth.

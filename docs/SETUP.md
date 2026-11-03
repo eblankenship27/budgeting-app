@@ -52,7 +52,7 @@ Close and reopen PowerShell after these installs so PATH refreshes.
 
 ## AWS
 
-1. Create an IAM user `budgeting-app-dev` with `AdministratorAccess` (tighten later).
+1. Create an IAM user `budget-app-dev`. Its only permission is assuming roles (see CLAUDE.md → AWS access model). Don't give it `AdministratorAccess`.
 2. Create an access key → "Command Line Interface (CLI)" use case.
 3. `aws configure`:
    - Region: `us-east-2`
