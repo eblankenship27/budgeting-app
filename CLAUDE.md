@@ -24,7 +24,7 @@ A personal **budgeting app** being built as a learning project to practice Pytho
 ### Database
 
 - **PostgreSQL 16** (local: Docker Compose, prod: Aurora Serverless v2)
-- Lambda connects **directly to the Aurora cluster** with `pool_size=1, max_overflow=0` plus reserved concurrency. **RDS Proxy** is deployed once in step 16 to learn it, then torn down. It has an ~$87/month floor on Serverless v2 (DECISION 018).
+- Lambda connects **directly to the Aurora cluster** with `pool_size=1, max_overflow=0`. Concurrency is capped by the account's Lambda limit of 10 (reserved concurrency once that's raised). **RDS Proxy** is deployed once in step 16 to learn it, then torn down. It has an ~$87/month floor on Serverless v2 (DECISION 018).
 
 ### Infrastructure
 
@@ -208,11 +208,19 @@ See `PROGRESS.md` for the detailed checklist with completion status. Summary:
 
 **Phase 3 has started.** The budget alert (step 3) is in place, the assume-role access model is set up and narrowed (see Environment above), and `cdk bootstrap` has run against `aws://001945408785/us-east-2` — bootstrap stack `CDKToolkit` is `CREATE_COMPLETE` at version 32.
 
-**Step 12 is done and Step 13 is half done.** `infra/cdk/` holds a CDK app with one stack, `DbStack` (`BudgetingDbDev`): a VPC with no NAT gateway and two isolated subnets, plus an Aurora Serverless v2 cluster on Postgres 16.13. It has been deployed, checked against the real account, and destroyed. Five template assertions in `infra/cdk/tests/unit/test_db_stack.py` pin its cost and security settings (DECISION 019). The account was upgraded from the AWS Free plan to the Paid plan, because Free-plan accounts can't create a regular Aurora cluster.
+**Step 12 is done and Step 13 is nearly done.** `infra/cdk/` holds a CDK app with two stacks. `ApiStack` is described below. `DbStack` (`BudgetingDbDev`) is a VPC with no NAT gateway and two isolated subnets, plus an Aurora Serverless v2 cluster on Postgres 16.13. It has been deployed, checked against the real account, and destroyed. Five template assertions in `infra/cdk/tests/unit/test_db_stack.py` pin its cost and security settings (DECISION 019). The account was upgraded from the AWS Free plan to the Paid plan, because Free-plan accounts can't create a regular Aurora cluster.
 
-The immediate next step is **Step 14**: a `Dockerfile` in `apps/api` built on the Lambda Python base image, tested locally with the built-in emulator. Then the rest of Step 13: `ApiStack` (`DockerImageFunction` + API Gateway + a security group rule allowing the Lambda into the cluster). That rule will intentionally break `test_database_unreachable_until_granted`. Update the test to name exactly which source is allowed.
+**Step 14 is done, and `ApiStack` is deployed and working.** FastAPI runs as a Lambda container image (`apps/api/Dockerfile`), behind an API Gateway HTTP API, in the isolated subnets. `/health` and `/docs` worked end to end, and both stacks were destroyed afterwards.
 
-Open item: check whether destroying the cluster also deletes its automated `rds:` backup snapshot. If one survives `cdk destroy`, add `delete_automated_backups=True` and a test for it.
+The immediate next step is **connecting the Lambda to the database** (Step 15's DB part, plus Step 17):
+
+- A security group rule letting the Lambda into the cluster on 5432. It will intentionally break `test_database_unreachable_until_granted`; update the test to name exactly which source is allowed.
+- IAM auth tokens generated at connect time in `db.py`.
+- Creating the `budgeting_app` IAM-auth user (`GRANT rds_iam`) and running Alembic from inside the VPC.
+
+Also re-measure the cold start (PROGRESS step 15).
+
+Cleanup habit: CDK's own `CustomVpcRestrictDefaultSG` Lambda leaves a `/aws/lambda/BudgetingDbDev-CustomVpcRestrictDefaultSG...` log group behind on every `DbStack` deploy, with retention set to never expire. Lambda creates the group itself, outside CloudFormation, so `cdk destroy` can't remove it. Delete them in the root console now and then. Bootstrap ECR images also accumulate, at about 240 MB per rebuild.
 
 Cost habits: `cdk destroy` whenever you're not actively working. The budget alert only tells you after money is spent; destroying the stack is what actually stops it. On the Paid plan nothing caps spending once credits run out.
 

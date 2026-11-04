@@ -3,7 +3,7 @@ import os
 
 import aws_cdk as cdk
 
-# from stacks.api_stack import ApiStack
+from stacks.api_stack import ApiStack
 # from stacks.auth_stack import AuthStack
 from stacks.db_stack import DbStack
 
@@ -19,7 +19,7 @@ db = DbStack(app, "BudgetingDbDev", env=env)
 
 # auth = AuthStack(app, "BudgetingAuthDev", env=env)
 
-# ApiStack(app, "BudgetingApiDev", env=env, vpc=db.vpc, db_proxy=db.proxy)
+ApiStack(app, "BudgetingApiDev", env=env, vpc=db.vpc, cluster=db.cluster)
 
 cdk.Tags.of(app).add("Project", "budgeting-app")
 cdk.Tags.of(app).add("Environment", "dev")

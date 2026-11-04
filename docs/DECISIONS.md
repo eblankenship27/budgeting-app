@@ -249,7 +249,7 @@ The audit `created_at` is a separate, timestamped column.
 - **Auto-pause.** Connections the proxy holds may also stop Aurora from pausing at 0 ACU. This is unverified; check the Aurora auto-pause docs before relying on it either way.
 - **The problem doesn't exist at this scale.** Connection exhaustion needs many concurrent Lambda environments. Two settings bound total connections without a proxy:
   - `pool_size=1, max_overflow=0` on the engine under Lambda (each environment serves one request at a time).
-  - **Reserved concurrency** on the Lambda (e.g. 10), which caps environments and therefore connections.
+  - **Reserved concurrency** on the Lambda (e.g. 10), which caps environments and therefore connections. *Update:* this account's total Lambda concurrency limit is **10**, and AWS won't let you reserve all of it. So `reserved_concurrent_executions` is commented out in `api_stack.py`, and the account limit itself is the cap. If the limit is ever raised (via Service Quotas), turn reserved concurrency back on before relying on the higher limit.
 - **The learning still happens.** The proxy is billed per second with a 10-minute minimum, so one deploy-and-destroy session costs cents.
 
 **How to apply:**

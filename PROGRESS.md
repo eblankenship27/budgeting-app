@@ -31,11 +31,15 @@ Legend: ✅ done · ⏳ in progress · ⬜ not started · ⏭ skipped/deferred
   - **Free-plan accounts can't create a regular Aurora cluster** ("you need to set WithExpressConfiguration"). The account was upgraded to the Paid plan.
   - **The engine version had been retired.** 16.6 was gone, so the cluster now uses 16.13.
   - **The CDK CLI was older than `aws-cdk-lib`** (cloud assembly schema mismatch). Fixed by upgrading the CLI.
-  - **Still to check:** whether the automated `rds:` backup snapshot is deleted along with the cluster.
+  - **Automated backups are deleted with the cluster.** The daily `rds:` snapshot didn't survive `cdk destroy`, so `delete_automated_backups` isn't needed.
 
-  **Still to do:** `ApiStack`: Lambda + API Gateway + the security group rule allowing the Lambda into the DB.
-- ⬜ **14.** Package FastAPI for Lambda. Recommended: Lambda container image (FastAPI deps are heavy). Mangum already wired into `main.py`.
-- ⬜ **15.** First successful `cdk deploy`. Debug cold starts, DB connectivity, IAM. **This step teaches the most.**
+  **`ApiStack` done** (`BudgetingApiDev`): a `DockerImageFunction` (x86_64, 512 MB, 30 s timeout) in the isolated subnets, an HTTP API in front of it, an explicit `LogGroup` (7-day retention, `DESTROY`), and a `ApiUrl` output. `DATABASE_URL` points at the cluster endpoint as `budgeting_app`, with no password. 3 template tests in `test_api_stack.py`. Deployed; `/health` and `/docs` worked through API Gateway; destroyed.
+  - **The account's Lambda concurrency limit is 10**, so `reserved_concurrent_executions` is commented out. The account limit caps connections for now (DECISION 018).
+
+  **Still to do:** the security group rule letting the Lambda into the DB (Lesson 7, with Step 15).
+- ✅ **14.** Lambda container image: `apps/api/Dockerfile` on `public.ecr.aws/lambda/python:3.12`, deps installed with `uv export --frozen --no-dev` + `uv pip install --target ${LAMBDA_TASK_ROOT}`, `CMD ["app.main.handler"]`. A `.dockerignore` keeps `.env` and `.venv` out. Runtime deps trimmed: `pytest`, `httpx`, `faker`, `uvicorn` moved to the dev group. Tested locally with the emulator using `apps/api/events/health.json` (`/health` → 200; `/health/db` reaches Compose Postgres via `host.docker.internal`).
+- ⏳ **15.** First successful `cdk deploy`. Debug cold starts, DB connectivity, IAM. **This step teaches the most.**
+  - **Cold start, still to re-measure.** The emulator's init took 812 ms. The first Lambda cold start after deploy reported `Init Duration: 10000.42 ms`. That's exactly the 10 s init limit, so init most likely timed out and was retried during the invoke, probably because the newly deployed image was still loading from ECR. Next deploy: read the `INIT_REPORT` status, force a second cold start (edit an env var), and compare. If ~10 s repeats every time, try `memory_size=1024`. Watch the total time: a timed-out init plus an Aurora resume (~15 s) gets close to API Gateway's 30 s limit.
 - ⬜ **16.** **Learning exercise, then teardown (DECISION 018).** Deploy RDS Proxy once in front of the DB, point the Lambda at the proxy endpoint, and observe connections. Then remove the proxy and verify `aws rds describe-db-proxies` returns empty. This needs a read-capable profile; `budgeting-deploy` gets `AccessDenied`. It has an ~$87/month floor on Aurora Serverless v2 (8-ACU minimum). Steady state: the Lambda connects directly to the cluster with `pool_size=1, max_overflow=0` plus reserved concurrency.
 - ⬜ **17.** Run Alembic migrations against AWS Postgres. Decide on migration strategy (separate Lambda vs. CI step).
 
