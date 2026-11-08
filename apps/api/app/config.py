@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     database_url: str
     environment: str = "local"
+    db_iam_auth: bool = False
 
 
 settings = Settings()

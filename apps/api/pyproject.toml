@@ -5,6 +5,7 @@ description = "Budgeting app FastAPI backend"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.18.4",
+    "boto3>=1.43.123",
     "email-validator>=2.3.0",
     "fastapi>=0.136.1",
     "mangum>=0.21.0",
@@ -16,6 +17,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "boto3-stubs[rds]>=1.43.123",
     "faker>=40.44.0",
     "httpx>=0.28.1",
     "mypy>=2.0.0",
@@ -51,6 +53,10 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers"
+filterwarnings = [
+    # Mangum 0.21 probes for an event loop at import; it handles the future RuntimeError itself.
+    "ignore:There is no current event loop:DeprecationWarning:mangum.adapter",
+]
 
 [build-system]
 requires = ["hatchling"]

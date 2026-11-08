@@ -35,7 +35,7 @@ def test_cluster_deleted_without_snapshot(template: Template) -> None:
         {"DeletionPolicy": "Delete", "UpdateReplacePolicy": "Delete"},
     )
     
-def test_database_unreachable_until_granted(template: Template) -> None:
+def test_database_grants_no_access_itself(template: Template) -> None:
     template.has_resource_properties(
         "AWS::EC2::SecurityGroup",
         {"GroupDescription": "RDS security group", "SecurityGroupIngress": Match.absent()}

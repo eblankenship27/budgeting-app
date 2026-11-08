@@ -38,6 +38,7 @@ class ApiStack(cdk.Stack):
             code=lambda_.DockerImageCode.from_image_asset(
                 str(API_DIR),
                 platform=ecr_assets.Platform.LINUX_AMD64,
+                exclude=[".venv", ".env", ".mypy_cache", ".ruff_cache", ".pytest_cache"],
             ),
             architecture=lambda_.Architecture.X86_64,
             memory_size=512,
@@ -48,9 +49,13 @@ class ApiStack(cdk.Stack):
             log_group=log_group,
             environment={
                 "ENVIRONMENT": "dev",
-                "DATABASE_URL": f"postgresql+psycopg://budgeting_app@{cluster.cluster_endpoint.hostname}:5432/budgeting",
+                "DB_IAM_AUTH": "true",
+                "DATABASE_URL": f"postgresql+psycopg://budgeting_app@{cluster.cluster_endpoint.hostname}:5432/budgeting?sslmode=require",
             },
         )
+        
+        self.function.connections.allow_to_default_port(cluster, "Lambda API to Aurora")
+        cluster.grant_connect(self.function, "budgeting_app")
         
         api = apigw.HttpApi(
             self,

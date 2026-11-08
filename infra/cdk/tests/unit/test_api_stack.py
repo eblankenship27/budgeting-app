@@ -28,3 +28,13 @@ def test_one_http_api(template: Template) -> None:
 def test_logs_expire_and_are_destroyed(template: Template) -> None:
     template.has_resource_properties("AWS::Logs::LogGroup", {"RetentionInDays": 7})
     template.has_resource("AWS::Logs::LogGroup", {"DeletionPolicy": "Delete"})
+    
+def test_lambda_can_reach_db_and_only_as_budgeting_app(template: Template) -> None:
+    template.has_resource_properties(
+        "AWS::EC2::SecurityGroupIngress",
+        {"Description": "Lambda API to Aurora", "SourceSecurityGroupId": Match.any_value()}
+    )
+    template.has_resource_properties(
+        "AWS::IAM::Policy",
+        {"PolicyDocument": {"Statement": Match.array_with([Match.object_like({"Action": "rds-db:connect"})])}}
+    )
