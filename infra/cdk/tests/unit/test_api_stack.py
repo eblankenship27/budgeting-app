@@ -38,3 +38,10 @@ def test_lambda_can_reach_db_and_only_as_budgeting_app(template: Template) -> No
         "AWS::IAM::Policy",
         {"PolicyDocument": {"Statement": Match.array_with([Match.object_like({"Action": "rds-db:connect"})])}}
     )
+    
+def test_migrations_run_before_api_updates(template: Template) -> None:
+    template.has_resource_properties(
+        "AWS::Lambda::Function", {"ImageConfig": {"Command": ["app.migrate.handler"]}}
+    )
+    template.resource_count_is("Custom::Trigger", 1)
+    template.has_resource("AWS::Lambda::Function", {"DependsOn": Match.array_with(["Migrate"])})

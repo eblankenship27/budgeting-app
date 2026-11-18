@@ -1,8 +1,22 @@
 
 import aws_cdk as cdk
 from aws_cdk import aws_ec2 as ec2
+from aws_cdk import aws_logs as logs
 from aws_cdk import aws_rds as rds
+from aws_cdk import custom_resources as cr
 from constructs import Construct
+
+CREATE_APP_USER = """
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'budgeting_app') THEN
+        CREATE USER budgeting_app;
+    END IF;
+    GRANT rds_iam TO budgeting_app;
+    GRANT USAGE, CREATE ON SCHEMA public TO budgeting_app;
+END $$;
+"""
+
 
 class DbStack(cdk.Stack):
     
@@ -39,4 +53,30 @@ class DbStack(cdk.Stack):
             iam_authentication=True,
             storage_encrypted=True,
             removal_policy=cdk.RemovalPolicy.DESTROY,
+            enable_data_api=True,
         )
+    
+        create_app_user = cr.AwsCustomResource(
+            self,
+            "CreateAppUser",
+            on_create=cr.AwsSdkCall(
+                service="rds-data",
+                action="ExecuteStatement",
+                parameters={
+                    "resourceArn": self.cluster.cluster_arn,
+                    "secretArn": self.cluster.secret.secret_arn,
+                    "database": "budgeting",
+                    "sql": CREATE_APP_USER,
+                },
+                physical_resource_id=cr.PhysicalResourceId.of("create-app-user"),
+            ),
+            policy=cr.AwsCustomResourcePolicy.from_sdk_calls(resources=[self.cluster.cluster_arn]),
+            log_group=logs.LogGroup(
+                self,
+                "CreateAppUserLogs",
+                retention=logs.RetentionDays.ONE_WEEK,
+                removal_policy=cdk.RemovalPolicy.DESTROY,
+            ),
+        )
+        self.cluster.secret.grant_read(create_app_user)
+        create_app_user.node.add_dependency(self.cluster)

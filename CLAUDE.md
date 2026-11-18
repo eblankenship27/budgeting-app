@@ -212,15 +212,11 @@ See `PROGRESS.md` for the detailed checklist with completion status. Summary:
 
 **Step 14 is done, and `ApiStack` is deployed and working.** FastAPI runs as a Lambda container image (`apps/api/Dockerfile`), behind an API Gateway HTTP API, in the isolated subnets. `/health` and `/docs` worked end to end, and both stacks were destroyed afterwards.
 
-The immediate next step is **connecting the Lambda to the database** (Step 15's DB part, plus Step 17):
+**Steps 13, 15 and 17 are done: the Lambda talks to Aurora.** It connects as `budgeting_app` with IAM auth tokens (no stored password). `DbStack` creates that user through a Data API custom resource, and a migration Lambda run by a CDK `Trigger` applies Alembic before the API Lambda updates (DECISION 020). `/accounts/` worked end to end through API Gateway; both stacks were destroyed. Cold init is ~2.2 s, but the first request after idle takes ~22 s while Aurora resumes from 0 ACU, close to API Gateway's 30 s cap.
 
-- A security group rule letting the Lambda into the cluster on 5432. It will intentionally break `test_database_unreachable_until_granted`; update the test to name exactly which source is allowed.
-- IAM auth tokens generated at connect time in `db.py`.
-- Creating the `budgeting_app` IAM-auth user (`GRANT rds_iam`) and running Alembic from inside the VPC.
+The next step is **Step 16, the RDS Proxy deploy-once exercise** (DECISION 018), or moving on to Phase 4 (Cognito) and leaving it for later.
 
-Also re-measure the cold start (PROGRESS step 15).
-
-Cleanup habit: CDK's own `CustomVpcRestrictDefaultSG` Lambda leaves a `/aws/lambda/BudgetingDbDev-CustomVpcRestrictDefaultSG...` log group behind on every `DbStack` deploy, with retention set to never expire. Lambda creates the group itself, outside CloudFormation, so `cdk destroy` can't remove it. Delete them in the root console now and then. Bootstrap ECR images also accumulate, at about 240 MB per rebuild.
+Cleanup habit: CDK's helper Lambdas (`CustomVpcRestrictDefaultSG` in `DbStack`, the Trigger provider in `ApiStack`) each leave a `/aws/lambda/...` log group behind on every deploy, with retention set to never expire. Lambda creates the group itself, outside CloudFormation, so `cdk destroy` can't remove it. Delete them in the root console now and then. Bootstrap ECR images also accumulate, at about 240 MB per rebuild.
 
 Cost habits: `cdk destroy` whenever you're not actively working. The budget alert only tells you after money is spent; destroying the stack is what actually stops it. On the Paid plan nothing caps spending once credits run out.
 

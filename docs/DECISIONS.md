@@ -290,3 +290,36 @@ Each of these is pinned by a test in `infra/cdk/tests/unit/test_db_stack.py`.
 - **`db.t4g.micro` provisioned RDS:** cheap, but it doesn't pause, and the project targets Aurora.
 - **Aurora express configuration on the Free plan:** rejected for losing the VPC and needing hand-written custom resources.
 - **Password auth plus a Secrets Manager VPC endpoint:** rejected because it adds about $7/month per AZ for no learning gain over IAM auth.
+
+---
+
+## 020 — Database bootstrap and migrations run inside CloudFormation
+
+**Decision:** Two jobs run automatically during `cdk deploy`:
+
+1. **Creating the app user, in `DbStack`.** The cluster has the Data API enabled (`enable_data_api=True`). A CDK `AwsCustomResource` calls `rds-data:ExecuteStatement` once, when the cluster is created. Using the master secret, it creates `budgeting_app`, grants it `rds_iam`, and grants `USAGE, CREATE ON SCHEMA public`. The SQL is idempotent (`IF NOT EXISTS`).
+2. **Running migrations, in `ApiStack`.** A second Lambda built from the same image (`cmd=["app.migrate.handler"]`) runs `alembic upgrade head` as `budgeting_app` over IAM auth. CDK's `triggers.Trigger` invokes it on every deploy where the function changed. It runs **before** the API Lambda is updated (`execute_before`), so new code never runs against an old schema.
+
+This settles Step 17's open question ("separate Lambda vs. CI step").
+
+**Verified 2026-11-17:** deployed, both jobs ran, and `/accounts/` returned an empty page through API Gateway. Destroy leaves one orphan log group (the Trigger provider's `/aws/lambda/BudgetingApiDev-AWSCDKTriggerCustomResourceProvider...`), the same as the `CustomVpcRestrictDefaultSG` one.
+
+**Why:**
+
+- **Only CloudFormation can do this.** The database is in isolated subnets, so a laptop or CI can't reach it. The Lambda has no route to Secrets Manager, so it can't read the master password. The deploy role can't run SQL or invoke Lambdas. CloudFormation can be given exactly the permissions and network position each job needs.
+- **The Data API is HTTPS, not a database connection,** so user creation needs no network path into the VPC. The master password never leaves AWS.
+- **The migration Lambda reuses the API image.** The image is built and pushed once, and both Lambdas carry the same code and IAM-auth path (7a's `env.py` change).
+- **A failed migration rolls back cleanly.** Postgres has transactional DDL and `env.py` runs inside one transaction, so a failed `upgrade` leaves the schema unchanged. The Trigger fails and `ApiStack` rolls back.
+
+**Rules this creates:**
+
+- **Migrations must be expand-only within a deploy.** A resource failing *after* a successful migration rolls back CloudFormation but not the database. Removing or renaming a column takes two deploys.
+- **`budgeting_app` owns the tables**, so the API could run DDL. Splitting it into a migrator (owner) and an app user (DML only) is a later hardening step (Phase 8).
+- **The Data API is an extra, IAM-gated way into the database.** Only the bootstrap custom resource holds `rds-data:ExecuteStatement` and read access to the master secret.
+
+**Alternatives considered:**
+
+- **A Secrets Manager VPC endpoint:** about $0.02/hour while deployed, and more networking to manage.
+- **The master password in a Lambda env var:** readable by anyone who can view the function's configuration.
+- **Alembic from CI:** CI can't reach isolated subnets without a bastion host.
+- **`aws lambda invoke` by hand:** the deploy role can't invoke, and it's a step that's easy to forget.

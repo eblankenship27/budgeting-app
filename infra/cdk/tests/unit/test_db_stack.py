@@ -41,3 +41,7 @@ def test_database_grants_no_access_itself(template: Template) -> None:
         {"GroupDescription": "RDS security group", "SecurityGroupIngress": Match.absent()}
     )
     template.resource_count_is("AWS::EC2::SecurityGroupIngress", 0)
+
+def test_app_user_is_created_through_the_data_api(template: Template) -> None:
+    template.has_resource_properties("AWS::RDS::DBCluster", {"EnableHttpEndpoint": True})
+    template.resource_count_is("Custom::AWS", 1)
