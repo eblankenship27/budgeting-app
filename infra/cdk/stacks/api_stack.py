@@ -1,5 +1,4 @@
 from pathlib import Path
-from platform import architecture
 
 import aws_cdk as cdk
 from aws_cdk import aws_apigatewayv2 as apigw
@@ -16,15 +15,13 @@ API_DIR = Path(__file__).resolve().parents[3] / "apps" / "api"
 
 class ApiStack(cdk.Stack):
     
-    
-    
     def __init__(
         self,
         scope: Construct,
         construct_id: str,
         *,
-        vpc = ec2.IVpc,
-        cluster = rds.IDatabaseCluster,
+        vpc: ec2.IVpc,
+        cluster: rds.IDatabaseCluster,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
