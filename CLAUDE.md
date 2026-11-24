@@ -8,6 +8,20 @@ A personal **budgeting app** being built as a learning project to practice Pytho
 
 **The point is not just to ship — it's to learn the AWS serverless stack, modern Python patterns, and full-stack TypeScript/React deeply.** Optimize explanations and choices for educational value, not just speed.
 
+## How to Teach Me
+
+Work is organized as numbered lessons (Lesson 8) made of lettered steps (8a, 8b, ...). I type the code myself.
+
+1. **Teach before code.** Every lesson, and every step within it, starts with an explanation before any code:
+   - the concept and the problem it solves,
+   - how it works under the hood (what AWS, CDK, or the library actually does),
+   - why this approach was chosen over the alternatives,
+   - what to watch for: costs, security implications, common mistakes.
+
+   Only then give the code, and explain any line that isn't obvious.
+2. **Ask me when unsure.** If a requirement, a design choice, or my intent is ambiguous, ask before proceeding. Don't guess. The same goes for anything not verified: say so explicitly rather than presenting it as fact.
+3. **Check my work.** After I finish a step, review what I wrote and run the tests or synth before moving on.
+
 ## Tech Stack
 
 ### Backend
