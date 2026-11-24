@@ -9,7 +9,7 @@ from stacks.db_stack import DbStack
 def template() -> Template:
     app = cdk.App()
     db = DbStack(app, "TestDb")
-    return Template.from_stack(ApiStack(app, "TestApi", vpc=db.vpc, cluster=db.cluster))
+    return Template.from_stack(ApiStack(app, "TestApi", vpc=db.vpc, cluster=db.cluster, proxy=db.proxy))
 
 def test_lambda_is_a_container_in_the_vpc(template: Template) -> None:
     template.has_resource_properties(
@@ -32,7 +32,7 @@ def test_logs_expire_and_are_destroyed(template: Template) -> None:
 def test_lambda_can_reach_db_and_only_as_budgeting_app(template: Template) -> None:
     template.has_resource_properties(
         "AWS::EC2::SecurityGroupIngress",
-        {"Description": "Lambda API to Aurora", "SourceSecurityGroupId": Match.any_value()}
+        {"Description": "Lambda API to proxy", "SourceSecurityGroupId": Match.any_value()}
     )
     template.has_resource_properties(
         "AWS::IAM::Policy",
@@ -45,3 +45,12 @@ def test_migrations_run_before_api_updates(template: Template) -> None:
     )
     template.resource_count_is("Custom::Trigger", 1)
     template.has_resource("AWS::Lambda::Function", {"DependsOn": Match.array_with(["Migrate"])})
+    
+def test_api_connects_through_the_proxy(template: Template) -> None:
+    template.has_resource_properties(
+        "AWS::Lambda::Function",
+        {"Environment": {"Variables": {"DATABASE_URL": {"Fn::Join": ["", Match.array_with([
+            "postgresql+psycopg://budgeting_app@",
+            {"Fn::ImportValue": Match.string_like_regexp("Proxy.*Endpoint")},
+        ])]}}}}
+    )

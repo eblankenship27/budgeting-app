@@ -1,6 +1,7 @@
 
 import aws_cdk as cdk
 from aws_cdk import aws_ec2 as ec2
+from aws_cdk import aws_iam as iam
 from aws_cdk import aws_logs as logs
 from aws_cdk import aws_rds as rds
 from aws_cdk import custom_resources as cr
@@ -80,3 +81,23 @@ class DbStack(cdk.Stack):
         )
         self.cluster.secret.grant_read(create_app_user)
         create_app_user.node.add_dependency(self.cluster)
+        
+        proxy_role = iam.Role(self, "ProxyRole", assumed_by=iam.ServicePrincipal("rds.amazonaws.com"))
+        self.cluster.grant_connect(proxy_role, "budgeting_app")
+        
+        self.proxy = self.cluster.add_proxy(
+            "Proxy",
+            vpc=self.vpc,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
+            default_auth_scheme=rds.DefaultAuthScheme.IAM_AUTH,
+            role=proxy_role,
+        )
+        
+        # The validator's schema says DBProxyTargetGroup has no Tags, but the
+        # CloudFormation reference lists Tags for it. Suppress just this rule here.
+        cdk.Validations.of(self.proxy).acknowledge(
+            cdk.Acknowledgment(
+                id="CloudFormation-Validate::F3002",
+                reason="Tags on DBProxyTargetGroup are valid per the CloudFormation docs; the validator schema is stale",
+            ),
+        )

@@ -22,6 +22,7 @@ class ApiStack(cdk.Stack):
         *,
         vpc: ec2.IVpc,
         cluster: rds.IDatabaseCluster,
+        proxy: rds.IDatabaseProxy,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -53,11 +54,14 @@ class ApiStack(cdk.Stack):
             vpc=vpc,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
             log_group=log_group,
-            environment=db_env,
+            environment={
+                **db_env,
+                "DATABASE_URL": f"postgresql+psycopg://budgeting_app@{proxy.endpoint}:5432/budgeting?sslmode=require",
+            }
         )
         
-        self.function.connections.allow_to_default_port(cluster, "Lambda API to Aurora")
-        cluster.grant_connect(self.function, "budgeting_app")
+        self.function.connections.allow_to(proxy, ec2.Port.tcp(5432), "Lambda API to proxy")
+        proxy.grant_connect(self.function, "budgeting_app")
         
         migrate_fn = lambda_.DockerImageFunction(
             self,

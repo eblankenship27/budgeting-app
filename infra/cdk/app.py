@@ -19,7 +19,7 @@ db = DbStack(app, "BudgetingDbDev", env=env)
 
 # auth = AuthStack(app, "BudgetingAuthDev", env=env)
 
-ApiStack(app, "BudgetingApiDev", env=env, vpc=db.vpc, cluster=db.cluster)
+ApiStack(app, "BudgetingApiDev", env=env, vpc=db.vpc, cluster=db.cluster, proxy=db.proxy)
 
 cdk.Tags.of(app).add("Project", "budgeting-app")
 cdk.Tags.of(app).add("Environment", "dev")

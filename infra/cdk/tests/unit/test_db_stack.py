@@ -40,8 +40,19 @@ def test_database_grants_no_access_itself(template: Template) -> None:
         "AWS::EC2::SecurityGroup",
         {"GroupDescription": "RDS security group", "SecurityGroupIngress": Match.absent()}
     )
-    template.resource_count_is("AWS::EC2::SecurityGroupIngress", 0)
+    template.resource_count_is("AWS::EC2::SecurityGroupIngress", 1)
+    template.has_resource_properties(
+        "AWS::EC2::SecurityGroupIngress",
+        {"Description": "Allow connections to the database Cluster from the Proxy"}
+    )
 
 def test_app_user_is_created_through_the_data_api(template: Template) -> None:
     template.has_resource_properties("AWS::RDS::DBCluster", {"EnableHttpEndpoint": True})
     template.resource_count_is("Custom::AWS", 1)
+    
+def test_proxy_uses_end_to_end_iam_auth(template: Template) -> None:
+    template.has_resource_properties("AWS::RDS::DBProxy", {"DefaultAuthScheme": "IAM_AUTH", "RequireTLS": True, "Auth": Match.absent()})
+    template.has_resource_properties(
+        "AWS::IAM::Policy", 
+        {"PolicyDocument": {"Statement": Match.array_with([Match.object_like({"Action": "rds-db:connect"})])}}
+    )
