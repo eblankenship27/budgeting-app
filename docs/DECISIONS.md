@@ -246,7 +246,7 @@ The audit `created_at` is a separate, timestamped column.
 **Why:**
 
 - **Cost floor.** For Aurora Serverless v2, RDS Proxy bills per ACU-hour of the database with an **8-ACU minimum**, about $0.015/ACU-hour in the US. That works out to roughly **$87/month** even when the database is scaled to 0 ACU. The proxy has no pause, so it would be most of the bill for a learning project.
-- **Auto-pause.** Connections the proxy holds may also stop Aurora from pausing at 0 ACU. This is unverified; check the Aurora auto-pause docs before relying on it either way.
+- **Auto-pause.** The proxy holds a connection open to the cluster, so Aurora **won't auto-pause** while a proxy is attached (confirmed in the Aurora auto-pause docs). It sits at 0.5 ACU or more instead.
 - **The problem doesn't exist at this scale.** Connection exhaustion needs many concurrent Lambda environments. Two settings bound total connections without a proxy:
   - `pool_size=1, max_overflow=0` on the engine under Lambda (each environment serves one request at a time).
   - **Reserved concurrency** on the Lambda (e.g. 10), which caps environments and therefore connections. *Update:* this account's total Lambda concurrency limit is **10**, and AWS won't let you reserve all of it. So `reserved_concurrent_executions` is commented out in `api_stack.py`, and the account limit itself is the cap. If the limit is ever raised (via Service Quotas), turn reserved concurrency back on before relying on the higher limit.
@@ -254,13 +254,15 @@ The audit `created_at` is a separate, timestamped column.
 
 **How to apply:**
 
-- Build the proxy as a separate stack (e.g. `BudgetingProxyDev`), or behind a CDK context flag (`cdk deploy -c withProxy=true`), so removing it is a clean `cdk destroy` or redeploy, not a hand edit of `DbStack`.
+- The proxy code lives on the unmerged branch `lesson-8-rds-proxy`, never on `main`. Redeploying it means switching to that branch and running `cdk deploy --all`.
 - After the session, confirm it's gone with `aws rds describe-db-proxies`. That command must return an empty list. Run it with a profile that has `rds:Describe*`. `budgeting-deploy` doesn't: it can only assume the CDK bootstrap roles, so the command returns `AccessDenied`. The budget alert would only catch a forgotten proxy weeks later.
 - The default Lambda wiring connects **directly to the Aurora cluster endpoint**. `ApiStack` must not require a proxy to exist.
 
 **Revisit when:** real traffic arrives, Lambda concurrency needs to go well above the reserved cap, or this becomes a production deployment rather than a learning account.
 
 **Alternative considered:** keeping the proxy permanently, which matches the original DECISION 003 note. Rejected on cost: roughly $87/month for protection against a load this project doesn't have.
+
+**Outcome (2026-11-24):** deployed once with end-to-end IAM auth, load-tested, and destroyed. The measurements back the decision. Under a 200-request burst, Lambda's concurrency limit of 10 throttled 152 requests (503s) before any of them reached the database. The proxy never multiplexed: client and database connections both peaked at 7. At this scale the proxy adds cost and blocks auto-pause, and the actual limit is somewhere it can't help. Details are in PROGRESS step 16.
 
 ---
 

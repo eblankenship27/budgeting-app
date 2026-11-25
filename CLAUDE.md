@@ -38,7 +38,7 @@ Work is organized as numbered lessons (Lesson 8) made of lettered steps (8a, 8b,
 ### Database
 
 - **PostgreSQL 16** (local: Docker Compose, prod: Aurora Serverless v2)
-- Lambda connects **directly to the Aurora cluster** with `pool_size=1, max_overflow=0`. Concurrency is capped by the account's Lambda limit of 10 (reserved concurrency once that's raised). **RDS Proxy** is deployed once in step 16 to learn it, then torn down. It has an ~$87/month floor on Serverless v2 (DECISION 018).
+- Lambda connects **directly to the Aurora cluster** with `pool_size=1, max_overflow=0`. Concurrency is capped by the account's Lambda limit of 10 (reserved concurrency once that's raised). **RDS Proxy** was deployed once in step 16 to learn it, then torn down. It has an ~$87/month floor on Serverless v2 and blocks auto-pause (DECISION 018). Its code lives on the unmerged branch `lesson-8-rds-proxy`.
 
 ### Infrastructure
 
@@ -209,7 +209,7 @@ See `PROGRESS.md` for the detailed checklist with completion status. Summary:
 
 - **Phase 1: Foundations** — monorepo, dev tools, FastAPI hello-world, local Postgres ✅
 - **Phase 2: Data Model & Core API** — SQLAlchemy models + Alembic ✅ / Pydantic schemas ✅ / CRUD routers ✅ / seed script ✅ / tests ✅ **(Phase 2 complete)**
-- **Phase 3: AWS Infrastructure** — CDK, Lambda, RDS Proxy (deploy-once learning exercise, DECISION 018)
+- **Phase 3: AWS Infrastructure** — CDK, Lambda, Aurora, migrations, RDS Proxy (deploy-once learning exercise, DECISION 018) ✅ **(Phase 3 complete)**
 - **Phase 4: Authentication** — Cognito, scoped queries
 - **Phase 5: Web Frontend** — Next.js, auth, dashboard, analytics endpoints (where pandas enters)
 - **Phase 6: Bank Connectivity** — Plaid sandbox, transaction sync
@@ -228,7 +228,9 @@ See `PROGRESS.md` for the detailed checklist with completion status. Summary:
 
 **Steps 13, 15 and 17 are done: the Lambda talks to Aurora.** It connects as `budgeting_app` with IAM auth tokens (no stored password). `DbStack` creates that user through a Data API custom resource, and a migration Lambda run by a CDK `Trigger` applies Alembic before the API Lambda updates (DECISION 020). `/accounts/` worked end to end through API Gateway; both stacks were destroyed. Cold init is ~2.2 s, but the first request after idle takes ~22 s while Aurora resumes from 0 ACU, close to API Gateway's 30 s cap.
 
-The next step is **Step 16, the RDS Proxy deploy-once exercise** (DECISION 018), or moving on to Phase 4 (Cognito) and leaving it for later.
+**Step 16 is done, so Phase 3 is complete.** RDS Proxy was deployed once from the unmerged `lesson-8-rds-proxy` branch, load-tested, and destroyed. Lambda's concurrency limit of 10 throttled most of a 200-request burst before any request reached the database, and the proxy never needed to multiplex (DECISION 018 outcome). An optional follow-up on that branch: force multiplexing with `max_connections_percent=1`.
+
+The next step is **Phase 4: Cognito authentication** (PROGRESS step 18 onward).
 
 Cleanup habit: CDK's helper Lambdas (`CustomVpcRestrictDefaultSG` in `DbStack`, the Trigger provider in `ApiStack`) each leave a `/aws/lambda/...` log group behind on every deploy, with retention set to never expire. Lambda creates the group itself, outside CloudFormation, so `cdk destroy` can't remove it. Delete them in the root console now and then. Bootstrap ECR images also accumulate, at about 240 MB per rebuild.
 
@@ -242,6 +244,8 @@ Cost habits: `cdk destroy` whenever you're not actively working. The budget aler
 - **Venvs can't be moved.** If the repo folder moves, delete `.venv` and recreate it.
 - **AWS retires Aurora minor versions.** Synth and unit tests can't catch a retired version; only a deploy does. Pick a version from `aws rds describe-db-engine-versions --engine aurora-postgresql --profile budgeting-view`.
 - Deploy and destroy with `--profile budgeting-deploy`. Inspect with `--profile budgeting-view`. The view role can't list or read secrets.
+- **Check synth with `cdk synth`, not `python app.py`.** Only the CLI applies the feature flags in `cdk.json`. One of them, `validateAgainstDefaultRules`, turns template-validation warnings into synth errors; others change generated names. Suppress a false positive on one construct with `cdk.Validations.of(construct).acknowledge(cdk.Acknowledgment(id=..., reason=...))`.
+- **A 503 from the HTTP API under load usually means Lambda throttling** (account concurrency limit 10), not an app error. Check the function's `Throttles` metric.
 
 ### Testing notes (for future sessions)
 
